@@ -1,0 +1,87 @@
+name: Simple Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: |
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-gcc-libs
+
+    - name: Compile the program
+      shell: msys2 {0}
+      run: |
+        echo "Compiling keymonitor..."
+        g++ -o keymonitor.exe keymonitor.cpp \
+          -luser32 -lgdi32 -lshell32 \
+          -static \
+          -std=c++11 \
+          -Os -s \
+          -D_WIN32_WINNT=0x0600
+        
+        echo "Compilation complete!"
+        echo "File info:"
+        file keymonitor.exe
+        ls -lh keymonitor.exe
+
+    - name: Test the binary
+      shell: msys2 {0}
+      run: |
+        echo "Testing binary..."
+        ./keymonitor.exe --help
+        echo "✅ Test passed!"
+
+    - name: Create release package
+      shell: msys2 {0}
+      run: |
+        # Create a timestamp for the filename
+        TIMESTAMP=$(date +'%Y%m%d-%H%M%S')
+        
+        # Create a simple README
+        cat > README.txt << 'EOF'
+        Windows Key Monitor
+        ===================
+        
+        Version: Compiled on $TIMESTAMP
+        Source: ${{ github.repository }}
+        
+        Usage:
+          keymonitor.exe           - Interactive mode
+          keymonitor.exe -o log.txt - Save to file
+          keymonitor.exe --help    - Show help
+        
+        Legal: For educational and research purposes only.
+        EOF
+        
+        # Package files
+        mkdir -p release
+        cp keymonitor.exe release/
+        cp README.txt release/
+        
+        echo "Package created in release/ directory"
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: keymonitor-build
+        path: |
+          keymonitor.exe
+          README.txt
+          release/
+        retention-days: 7
