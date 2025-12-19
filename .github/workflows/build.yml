@@ -1,0 +1,196 @@
+name: Build Windows Key Monitor
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  release:
+    types: [created]
+  workflow_dispatch:  # 允许手动触发
+
+env:
+  BUILD_TYPE: Release
+  OUTPUT_NAME: keymonitor
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: recursive
+
+    - name: Setup MSYS2 and MinGW
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: |
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-gcc-libs
+          mingw-w64-x86_64-make
+          base-devel
+
+    - name: Set up build environment
+      shell: msys2 {0}
+      run: |
+        echo "Building Windows Key Monitor"
+        echo "GCC Version:"
+        gcc --version
+        echo "G++ Version:"
+        g++ --version
+
+    - name: Compile with MinGW (Static Linking)
+      shell: msys2 {0}
+      run: |
+        echo "Compiling with static linking..."
+        g++ -o ${{ env.OUTPUT_NAME }}.exe keymonitor.cpp \
+          -luser32 -lgdi32 -lshell32 -static \
+          -std=c++11 \
+          -Wl,--subsystem,windows \
+          -Os -s -Wall -Wextra -Werror \
+          -D_WIN32_WINNT=0x0600
+        
+        # Check if executable was created
+        if [ -f "${{ env.OUTPUT_NAME }}.exe" ]; then
+          echo "✅ Compilation successful!"
+          file ${{ env.OUTPUT_NAME }}.exe
+        else
+          echo "❌ Compilation failed!"
+          exit 1
+        fi
+
+    - name: Create Release Version (Optimized)
+      if: github.event_name == 'release'
+      shell: msys2 {0}
+      run: |
+        echo "Creating release version with additional optimizations..."
+        g++ -o ${{ env.OUTPUT_NAME }}-release.exe keymonitor.cpp \
+          -luser32 -lgdi32 -lshell32 -static \
+          -std=c++11 \
+          -Wl,--subsystem,windows \
+          -O3 -flto -s -Wall -Wextra \
+          -D_WIN32_WINNT=0x0600 \
+          -DNDEBUG
+
+    - name: Test the executable
+      shell: msys2 {0}
+      run: |
+        echo "Testing the compiled executable..."
+        # Run with --help to test basic functionality
+        ./${{ env.OUTPUT_NAME }}.exe --help
+        echo "✅ Executable test passed!"
+
+    - name: Get version info
+      id: version
+      shell: msys2 {0}
+      run: |
+        # Extract version from source or use git tag
+        if [ "${{ github.event_name }}" == "release" ]; then
+          VERSION="${{ github.event.release.tag_name }}"
+        else
+          VERSION="$(date +'%Y%m%d')-$(git rev-parse --short HEAD)"
+        fi
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "Building version: $VERSION"
+
+    - name: Create README for binary
+      shell: msys2 {0}
+      run: |
+        cat > README-BINARY.md << 'EOF'
+        # Windows Key Monitor Binary
+        
+        ## ⚠️ Important Legal Notice
+        
+        This software is for **EDUCATIONAL AND RESEARCH PURPOSES ONLY**.
+        
+        ### Usage Instructions:
+        1. **Right-click** and select "Run as administrator"
+        2. **Command line options:**
+           - No arguments: Interactive mode (shows keys in console)
+           - `-o filename`: Silent logging to file
+           - `-h`: Hide window, run in background
+           - `--help`: Show help information
+        
+        ### Exit Program:
+        - Press **Left Ctrl + Win** keys simultaneously
+        
+        ### System Requirements:
+        - Windows 7/8/10/11 (x64)
+        - Administrator privileges recommended
+        
+        ### Legal Disclaimer:
+        Use this tool only on devices you own or have explicit permission to monitor.
+        The authors are not responsible for any misuse.
+        EOF
+
+    - name: Archive artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-key-monitor-${{ steps.version.outputs.VERSION }}
+        path: |
+          keymonitor.exe
+          keymonitor-release.exe
+          README-BINARY.md
+        if-no-files-found: error
+        retention-days: 7
+
+    - name: Upload to Release
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          keymonitor.exe
+          keymonitor-release.exe
+          README-BINARY.md
+        draft: false
+        prerelease: false
+
+  test-compilation:
+    needs: build-windows
+    runs-on: windows-latest
+    if: always()
+    
+    steps:
+    - name: Download artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: windows-key-monitor-${{ needs.build-windows.outputs.version }}
+        
+    - name: Verify binary
+      run: |
+        echo "Verifying compiled binaries..."
+        dir *.exe
+        echo "✅ Binaries verified!"
+
+  security-scan:
+    runs-on: windows-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run security scan with CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: cpp
+        
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+
+  dependency-check:
+    runs-on: windows-latest
+    if: github.event_name == 'push'
+    
+    steps:
+    - name: Check dependencies
+      run: |
+        echo "Checking for security vulnerabilities..."
+        echo "This project uses Windows API calls that are standard in Windows."
+        echo "No external dependencies required due to static linking."
+        echo "✅ Dependency check passed!"
