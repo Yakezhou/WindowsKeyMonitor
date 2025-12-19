@@ -334,7 +334,7 @@ if (vkCode == VK_LCONTROL && vkCode == VK_F12) {
 
 ## License Information
 
-This project uses the GPLv3 (GNU General Public License v3.0) open-source license and is for educational and research use only. Commercial use or illegal monitoring is prohibited without permission. See the `LEGAL.md` file for details.
+This project uses the GPLv3 (GNU General Public License v3.0) open-source license and is for educational and research use only. Commercial use or illegal monitoring is prohibited without permission. See the [LEGAL.md](LEGAL.md) file for details.
 
 ---
 
