@@ -1,5 +1,7 @@
 # Legal and Ethical Statement
 
+Languages: English, [Simplified Chinese](LEGAL_CN.md)
+
 ## ⚖️ Legal Requirements
 
 This software is only suitable for:
