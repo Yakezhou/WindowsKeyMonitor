@@ -17,6 +17,9 @@ jobs:
   build-windows:
     runs-on: windows-latest
     
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+    
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -89,16 +92,19 @@ jobs:
 
     - name: Get version info
       id: version
-      shell: msys2 {0}
+      shell: bash
       run: |
-        # Extract version from source or use git tag
+        # Extract version using GitHub API or environment variables
         if [ "${{ github.event_name }}" == "release" ]; then
           VERSION="${{ github.event.release.tag_name }}"
         else
-          VERSION="$(date +'%Y%m%d')-$(git rev-parse --short HEAD)"
+          # Use commit SHA and date
+          VERSION="$(date +'%Y%m%d')-${{ github.sha }}"
+          # Shorten the SHA to first 7 characters
+          VERSION="${VERSION:0:20}"
         fi
-        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-        echo "Building version: $VERSION"
+        echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+        echo "Building version: ${VERSION}"
 
     - name: Create README for binary
       shell: msys2 {0}
@@ -135,10 +141,9 @@ jobs:
       with:
         name: windows-key-monitor-${{ steps.version.outputs.VERSION }}
         path: |
-          keymonitor.exe
-          keymonitor-release.exe
+          ${{ env.OUTPUT_NAME }}.exe
+          ${{ env.OUTPUT_NAME }}-release.exe
           README-BINARY.md
-          keymonitor.cpp
         if-no-files-found: error
         retention-days: 7
 
@@ -147,16 +152,15 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          keymonitor.exe
-          keymonitor-release.exe
+          ${{ env.OUTPUT_NAME }}.exe
+          ${{ env.OUTPUT_NAME }}-release.exe
           README-BINARY.md
         draft: false
         prerelease: false
 
   test-compilation:
-    needs: build-windows
     runs-on: windows-latest
-    if: always()
+    needs: build-windows
     
     steps:
     - name: Download artifact
@@ -169,3 +173,12 @@ jobs:
         echo "Verifying compiled binaries..."
         dir *.exe
         echo "✅ Binaries verified!"
+        
+        echo "Testing basic functionality..."
+        if [ -f "keymonitor.exe" ]; then
+          echo "Running help command..."
+          ./keymonitor.exe --help
+        else
+          echo "keymonitor.exe not found!"
+          exit 1
+        fi
